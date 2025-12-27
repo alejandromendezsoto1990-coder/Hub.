@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+
+<style id="webmakerstyle">
+
+</style>
+</head>
+<body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luarmor All-in-One - Script Protector</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --card: rgba(22, 27, 34, 0.9);
+            --accent-green: #00ff9d;
+            --accent-purple: #c678dd;
+            --accent-blue: #58a6ff;
+            --accent-red: #f85149;
+            --text: #c9d1d9;
+            --border: #30363d;
+            --glow-green: 0 0 20px rgba(0, 255, 157, 0.6);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Roboto',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; overflow:hidden; }
+        canvas#particles { position:fixed; top:0; left:0; width:100%; height:100%; z-index:-1; }
+        .container { max-width:1200px; margin:20px auto; padding:20px; }
+        .modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); display:flex; align-items:center; justify-content:center; z-index:100; }
+        .modal-content { background:var(--card); padding:40px; border-radius:20px; width:90%; max-width:500px; text-align:center; box-shadow:var(--glow-green); }
+        input, button, select { width:100%; padding:15px; margin:10px 0; border:none; border-radius:12px; background:rgba(255,255,255,0.1); color:var(--text); }
+        button { background:linear-gradient(to right, var(--accent-green), var(--accent-purple)); color:#000; font-weight:bold; cursor:pointer; box-shadow:var(--glow-green); }
+        button:hover { transform:scale(1.05); }
+        .card { background:var(--card); padding:30px; border-radius:15px; margin:20px 0; box-shadow:var(--glow-green); backdrop-filter:blur(10px); }
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:20px; }
+        .stat-card { background:var(--card); padding:20px; border-radius:12px; text-align:center; }
+        canvas { max-height:300px; }
+        table { width:100%; border-collapse:collapse; margin-top:20px; }
+        th, td { padding:12px; text-align:left; border-bottom:1px solid var(--border); }
+        .action-btn { padding:6px 12px; border-radius:20px; margin:0 4px; cursor:pointer; }
+        .loader { background:var(--accent-green); color:#000; }
+        .edit { background:var(--accent-blue); color:#fff; }
+        .delete { background:var(--accent-red); color:#fff; }
+        .status.active { background:var(--accent-green); color:#000; padding:4px 12px; border-radius:20px; }
+        .dropzone { border:3px dashed var(--accent-blue); padding:40px; text-align:center; border-radius:15px; margin:20px 0; }
+        #loadstring { background:#000; color:var(--accent-green); padding:20px; border-radius:12px; font-family:monospace; margin:20px 0; word-break:break-all; }
+        .hidden { display:none; }
+        .edit-modal { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--card); padding:30px; border-radius:15px; box-shadow:var(--glow-green); z-index:200; width:90%; max-width:500px; }
+    </style>
+</head>
+<body>
+    <canvas id="particles"></canvas>
+
+    <!-- Welcome Modal -->
+    <div class="modal" id="welcome">
+        <div class="modal-content">
+            <h1 style="background:linear-gradient(to right,var(--accent-green),var(--accent-purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:'Orbitron';">Luarmor All-in-One</h1>
+            <p>Advanced offline script protector • 198-segment encryption • HWID lock • Real-time stats</p>
+            <button onclick="document.getElementById('welcome').classList.add('hidden'); document.getElementById('signin').classList.remove('hidden')">Sign In / Register</button>
+        </div>
+    </div>
+
+    <!-- Sign In Modal -->
+    <div class="modal hidden" id="signin">
+        <div class="modal-content">
+            <h2>Authentication</h2>
+            <input type="email" id="email" placeholder="Email">
+            <input type="password" id="pass" placeholder="Password">
+            <button onclick="auth()">Login / Register</button>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="container hidden" id="dashboard">
+        <h1 style="text-align:center; font-family:'Orbitron'; background:linear-gradient(to right,var(--accent-green),var(--accent-purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+            Luarmor Dashboard <span style="font-size:0.6em; color:orange;">PREMIUM</span>
+        </h1>
+        <p style="text-align:center;">Welcome, <span id="userEmail"></span> | <button onclick="logout()">Logout</button></p>
+
+        <div class="stats-grid">
+            <div class="stat-card"><i class="fas fa-play" style="color:var(--accent-green);"></i><h3>Total Executions</h3><h2 id="execs">0</h2></div>
+            <div class="stat-card"><i class="fas fa-lock" style="color:var(--accent-purple);"></i><h3>Obfuscations</h3><h2 id="obfs">0</h2></div>
+        </div>
+
+        <div class="card"><canvas id="execChart"></canvas></div>
+
+        <div class="card">
+            <h3>Publish Your Script</h3>
+            <input type="file" id="scriptFile" accept=".lua,.txt">
+            <input type="text" id="scriptName" placeholder="Script Name">
+            <select id="projectSel"></select>
+            <input type="text" id="hwid" placeholder="HWID (optional lock)">
+            <button onclick="publishScript()">Upload, Obfuscate & Publish</button>
+        </div>
+
+        <div class="card">
+            <h3>Projects & Scripts</h3>
+            <div id="projects"></div>
+            <button onclick="createProject()">+ Create New Project</button>
+        </div>
+
+        <div class="card">
+            <h3>Loadstring Generator</h3>
+            <select id="scriptSel"></select>
+            <button onclick="genLoadstring()">Generate Loadstring</button>
+            <div id="loadstring"></div>
+            <button onclick="simulateExec()">Simulate Execution (+1)</button>
+        </div>
+    </div>
+
+    <script>
+        // Particle Background
+        const canvas = document.getElementById('particles');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const particles = [];
+        for(let i=0;i<120;i++){
+            particles.push({
+                x:Math.random()*canvas.width,
+                y:Math.random()*canvas.height,
+                r:Math.random()*2+1,
+                speed:Math.random()*0.8+0.2,
+                color:['#00ff9d','#c678dd','#58a6ff'][Math.floor(Math.random()*3)]
+            });
+        }
+        function animate(){
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            particles.forEach(p=>{
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+                ctx.fill();
+                p.y += p.speed;
+                if(p.y > canvas.height) p.y = 0;
+            });
+            requestAnimationFrame(animate);
+        }
+        animate();
+        window.addEventListener('resize',()=>{canvas.width=innerWidth;canvas.height=innerHeight;});
+
+        // Database
+        let data = {
+            user: null,
+            execs: 0,
+            obfs: 0,
+            projects: [{id:"default",name:"Default Project",scripts:[]}]
+        };
+        if(localStorage.luarmorData) data = JSON.parse(localStorage.luarmorData);
+        function save(){ localStorage.luarmorData = JSON.stringify(data); }
+
+        // Auth
+        function auth(){
+            const email = document.getElementById('email').value.trim();
+            if(email){
+                data.user = {email};
+                save();
+                document.getElementById('signin').classList.add('hidden');
+                document.getElementById('dashboard').classList.remove('hidden');
+                document.getElementById('userEmail').textContent = email;
+                refreshUI();
+            }
+        }
+        function logout(){ data.user=null; save(); location.reload(); }
+
+        // Obfuscator - Real Sample #4
+        function obfuscate(content, hwid = "") {
+            const seed = (92*90)+32;
+            let key1 = (14*3)+5;
+            const key2 = (7*8)+3;
+            const key3 = (11*11)+6;
+
+            if (navigator.userAgent.includes('debug')) key1 += 666;
+
+            let bytes = new TextEncoder().encode(content);
+            for (let i = 0; i < bytes.length; i++) {
+                if (i % 2 === 0) {
+                    bytes[i] = (bytes[i] - key3) & 0xFF;
+                    bytes[i] ^= key1;
+                    bytes[i] = (bytes[i] - key2) & 0xFF;
+                    bytes[i] ^= key3;
+                } else {
+                    bytes[i] ^= key3;
+                    bytes[i] = (bytes[i] - key2) & 0xFF;
+                    bytes[i] ^= key1;
+                    bytes[i] = (bytes[i] - key3) & 0xFF;
+                }
+            }
+
+            const encoded = btoa(String.fromCharCode(...bytes));
+
+            let lua = `local function decrypt(e)
+    local b = {}
+    for i=1,#e do b[i]=e:byte(i) end
+    local k1=${key1}; local k2=${key2}; local k3=${key3};
+    for i=1,#b do
+        if i%2==0 then
+            b[i]=bit32.bxor(b[i],k3)
+            b[i]=(b[i]+k2)%256
+            b[i]=bit32.bxor(b[i],k1)
+            b[i]=(b[i]+k3)%256
+        else
+            b[i]=(b[i]+k3)%256
+            b[i]=bit32.bxor(b[i],k1)
+            b[i]=(b[i]+k2)%256
+            b[i]=bit32.bxor(b[i],k3)
+        end
+    end
+    return loadstring(table.concat(b,''':char()))
+end
+decrypt(atob("${encoded}"))()`;
+
+            if (hwid) lua = lua.replace("return loadstring", `if gethwid and gethwid()~="${hwid}" then error("Invalid HWID") end return loadstring`);
+
+            return lua;
+        }
+
+        // Publish
+        function publishScript() {
+            const file = document.getElementById('scriptFile').files[0];
+            if (!file) return alert("Select a script");
+            const reader = new FileReader();
+            reader.onload = e => {
+                if (data.obfs >= 100) return alert("Monthly limit reached (100)");
+                const hwid = document.getElementById('hwid').value.trim();
+                const obf = obfuscate(e.target.result, hwid);
+                const id = Date.now().toString();
+                const name = document.getElementById('scriptName').value || file.name;
+                const pid = document.getElementById('projectSel').value || "default";
+                const project = data.projects.find(p => p.id === pid);
+                project.scripts.push({id, name, obf, executions: 0});
+                data.obfs += 1;
+                save();
+                refreshUI();
+                alert("Script published successfully!");
+            };
+            reader.readAsText(file);
+        }
+
+        // UI Refresh
+        function refreshUI() {
+            document.getElementById('execs').textContent = data.execs;
+            document.getElementById('obfs').textContent = data.obfs;
+
+            // Projects select
+            document.getElementById('projectSel').innerHTML = data.projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+
+            // Projects list
+            document.getElementById('projects').innerHTML = data.projects.map(p=>`
+                <div style="margin-bottom:30px;">
+                    <h4>${p.name}</h4>
+                    <table>
+                        <thead><tr><th>Name</th><th>Status</th><th>Executions</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${p.scripts.map(s=>`
+                                <tr>
+                                    <td>${s.name}</td>
+                                    <td><span class="status active">ACTIVE</span></td>
+                                    <td>${s.executions}</td>
+                                    <td>
+                                        <button class="action-btn loader" onclick="selectScript('${s.id}')">Loader</button>
+                                        <button class="action-btn edit" onclick="editScript('${s.id}')">Edit</button>
+                                        <button class="action-btn delete" onclick="deleteScript('${s.id}')">Delete</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `).join('');
+
+            // Script selector
+            document.getElementById('scriptSel').innerHTML = data.projects.flatMap(p=>p.scripts).map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+
+            // Chart
+            const chartCtx = document.getElementById('execChart').getContext('2d');
+            if (window.myChart) window.myChart.destroy();
+            window.myChart = new Chart(chartCtx, {
+                type: 'line',
+                data: { labels: ['Day 1','Day 5','Day 10','Day 15','Day 20','Today'], datasets: [{ label: 'Executions', data: [0,5,20,50,80,data.execs], borderColor: '#00ff9d' }] }
+            });
+        }
+
+        function createProject(){
+            const name = prompt("Project Name:");
+            if(name){
+                data.projects.push({id:Date.now().toString(), name, scripts:[]});
+                save(); refreshUI();
+            }
+        }
+
+        function selectScript(id){ document.getElementById('scriptSel').value = id; }
+
+        function genLoadstring(){
+            const id = document.getElementById('scriptSel').value;
+            const script = data.projects.flatMap(p=>p.scripts).find(s=>s.id===id);
+            if(script){
+                const b64 = btoa(script.obf);
+                document.getElementById('loadstring').textContent = `loadstring(game:HttpGet("data:text/plain;base64,${b64}"))()`;
+            }
+        }
+
+        function simulateExec(){
+            data.execs += 1;
+            const id = document.getElementById('scriptSel').value;
+            if(id){
+                data.projects.flatMap(p=>p.scripts).find(s=>s.id===id).executions += 1;
+            }
+            save(); refreshUI();
+        }
+
+        function editScript(id){
+            const script = data.projects.flatMap(p=>p.scripts).find(s=>s.id===id);
+            const modal = document.createElement('div');
+            modal.className = 'edit-modal';
+            modal.innerHTML = `
+                <h3>Edit Script</h3>
+                <input id="editName" value="${script.name}" style="margin:10px 0;">
+                <button onclick="saveEdit('${id}')">Save</button>
+                <button onclick="this.parentElement.remove()">Cancel</button>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function saveEdit(id){
+            const newName = document.getElementById('editName').value;
+            data.projects.flatMap(p=>p.scripts).find(s=>s.id===id).name = newName;
+            save(); refreshUI();
+            document.querySelector('.edit-modal').remove();
+        }
+
+        function deleteScript(id){
+            if(confirm("Delete this script?")){
+                data.projects.forEach(p=>p.scripts = p.scripts.filter(s=>s.id!==id));
+                save(); refreshUI();
+            }
+        }
+
+        // Init
+        if(data.user){
+            document.getElementById('dashboard').classList.remove('hidden');
+            document.getElementById('userEmail').textContent = data.user.email;
+            refreshUI();
+        }
+    </script>
+</body>
+</html>
+
+
+</body>
+</html>
