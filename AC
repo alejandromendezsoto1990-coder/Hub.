@@ -1,0 +1,270 @@
+local GoldA1 = {}
+GoldA1.Config = {
+    MaxSpeed = 50,
+    MaxAcceleration = 100,
+    HitboxExpandLimit = 5,
+    MaxReachDistance = 20,
+    MaxVerticalSpeed = 100,
+    RemoteSpamLimit = 15,
+    BallTouchDistance = 30,
+    KickOnDetection = true,
+    LogDetections = true
+}
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local playerData = {}
+local detectionCounts = {}
+
+function GoldA1:Initialize()
+    Players.PlayerAdded:Connect(function(player)
+        self:SetupPlayer(player)
+    end)
+    
+    Players.PlayerRemoving:Connect(function(player)
+        playerData[player.UserId] = nil
+        detectionCounts[player.UserId] = nil
+    end)
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        self:SetupPlayer(player)
+    end
+    
+    self:StartMonitoring()
+    self:ProtectRemotes()
+end
+
+function GoldA1:SetupPlayer(player)
+    playerData[player.UserId] = {
+        LastPosition = nil,
+        LastVelocity = Vector3.new(),
+        RemoteCallTimes = {},
+        HitboxSize = nil,
+        LastGroundTime = 0
+    }
+    detectionCounts[player.UserId] = 0
+    
+    player.CharacterAdded:Connect(function(character)
+        self:MonitorCharacter(player, character)
+    end)
+    
+    if player.Character then
+        self:MonitorCharacter(player, player.Character)
+    end
+end
+
+function GoldA1:MonitorCharacter(player, character)
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    
+    if humanoidRootPart then
+        playerData[player.UserId].LastPosition = humanoidRootPart.Position
+        playerData[player.UserId].HitboxSize = humanoidRootPart.Size
+    end
+end
+
+function GoldA1:StartMonitoring()
+    RunService.Heartbeat:Connect(function(deltaTime)
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character then
+                self:CheckSpeed(player, deltaTime)
+                self:CheckFlight(player, deltaTime)
+                self:CheckHitboxExpansion(player)
+            end
+        end
+    end)
+end
+
+function GoldA1:CheckSpeed(player, deltaTime)
+    local character = player.Character
+    if not character then return end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    local data = playerData[player.UserId]
+    if not data.LastPosition then
+        data.LastPosition = hrp.Position
+        return
+    end
+    
+    local distance = (hrp.Position - data.LastPosition).Magnitude
+    local speed = distance / deltaTime
+    
+    if speed > self.Config.MaxSpeed then
+        self:FlagPlayer(player, "Speed", speed)
+    end
+    
+    local currentVelocity = (hrp.Position - data.LastPosition) / deltaTime
+    local acceleration = (currentVelocity - data.LastVelocity).Magnitude / deltaTime
+    
+    if acceleration > self.Config.MaxAcceleration then
+        self:FlagPlayer(player, "Acceleration", acceleration)
+    end
+    
+    data.LastPosition = hrp.Position
+    data.LastVelocity = currentVelocity
+end
+
+function GoldA1:CheckFlight(player, deltaTime)
+    local character = player.Character
+    if not character then return end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not hrp or not humanoid then return end
+    
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {character}
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    
+    local rayResult = workspace:Raycast(hrp.Position, Vector3.new(0, -10, 0), rayParams)
+    
+    if rayResult then
+        playerData[player.UserId].LastGroundTime = tick()
+    else
+        local airTime = tick() - playerData[player.UserId].LastGroundTime
+        if airTime > 3 and humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then
+            if math.abs(hrp.AssemblyLinearVelocity.Y) > self.Config.MaxVerticalSpeed then
+                self:FlagPlayer(player, "Flying", airTime)
+            end
+        end
+    end
+end
+
+function GoldA1:CheckHitboxExpansion(player)
+    local character = player.Character
+    if not character then return end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    local data = playerData[player.UserId]
+    if not data.HitboxSize then
+        data.HitboxSize = hrp.Size
+        return
+    end
+    
+    local sizeIncrease = (hrp.Size - data.HitboxSize).Magnitude
+    
+    if sizeIncrease > self.Config.HitboxExpandLimit then
+        self:FlagPlayer(player, "HitboxExpansion", sizeIncrease)
+        hrp.Size = data.HitboxSize
+    end
+end
+
+function GoldA1:ProtectRemotes()
+    for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
+        if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
+            self:MonitorRemote(remote)
+        end
+    end
+    
+    ReplicatedStorage.DescendantAdded:Connect(function(descendant)
+        if descendant:IsA("RemoteEvent") or descendant:IsA("RemoteFunction") then
+            self:MonitorRemote(descendant)
+        end
+    end)
+end
+
+function GoldA1:MonitorRemote(remote)
+    if remote:IsA("RemoteEvent") then
+        remote.OnServerEvent:Connect(function(player, ...)
+            self:CheckRemoteSpam(player, remote.Name)
+            self:ValidateRemoteArgs(player, remote.Name, {...})
+        end)
+    elseif remote:IsA("RemoteFunction") then
+        local oldInvoke = remote.OnServerInvoke
+        remote.OnServerInvoke = function(player, ...)
+            self:CheckRemoteSpam(player, remote.Name)
+            self:ValidateRemoteArgs(player, remote.Name, {...})
+            if oldInvoke then
+                return oldInvoke(player, ...)
+            end
+        end
+    end
+end
+
+function GoldA1:CheckRemoteSpam(player, remoteName)
+    local data = playerData[player.UserId]
+    if not data then return end
+    
+    local currentTime = tick()
+    table.insert(data.RemoteCallTimes, {name = remoteName, time = currentTime})
+    
+    local recentCalls = {}
+    for i = #data.RemoteCallTimes, 1, -1 do
+        if currentTime - data.RemoteCallTimes[i].time < 1 then
+            table.insert(recentCalls, data.RemoteCallTimes[i])
+        else
+            table.remove(data.RemoteCallTimes, i)
+        end
+    end
+    
+    if #recentCalls > self.Config.RemoteSpamLimit then
+        self:FlagPlayer(player, "RemoteSpam", #recentCalls)
+    end
+end
+
+function GoldA1:ValidateRemoteArgs(player, remoteName, args)
+    for _, arg in ipairs(args) do
+        if typeof(arg) == "Instance" then
+            if arg:IsA("Player") and arg ~= player then
+                self:FlagPlayer(player, "InvalidRemoteArg", "Wrong Player")
+            end
+        end
+    end
+end
+
+function GoldA1:CheckBallTouch(player, ball)
+    local character = player.Character
+    if not character then return false end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    
+    local distance = (hrp.Position - ball.Position).Magnitude
+    
+    if distance > self.Config.BallTouchDistance then
+        self:FlagPlayer(player, "UnusualBallTouch", distance)
+        return false
+    end
+    
+    return true
+end
+
+function GoldA1:CheckReach(player, targetPosition)
+    local character = player.Character
+    if not character then return false end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    
+    local distance = (hrp.Position - targetPosition).Magnitude
+    
+    if distance > self.Config.MaxReachDistance then
+        self:FlagPlayer(player, "Reach", distance)
+        return false
+    end
+    
+    return true
+end
+
+function GoldA1:FlagPlayer(player, reason, value)
+    detectionCounts[player.UserId] = (detectionCounts[player.UserId] or 0) + 1
+    
+    if self.Config.LogDetections then
+        warn(string.format("[GoldA1] Detected %s from %s (Value: %s) - Total Flags: %d", 
+            reason, player.Name, tostring(value), detectionCounts[player.UserId]))
+    end
+    
+    if detectionCounts[player.UserId] >= 5 and self.Config.KickOnDetection then
+        player:Kick("GoldA1 Anti-Cheat: Multiple violations detected")
+    end
+end
+
+GoldA1:Initialize()
+
+return GoldA1
